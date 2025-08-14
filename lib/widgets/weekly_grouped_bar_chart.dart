@@ -8,14 +8,16 @@ class WeeklyGroupedBarChart extends StatelessWidget {
     this.maxY,
     this.minY = 0,
     this.gridInterval = 20,
-    this.groupBarWidth = 10,
-    this.barsSpace = 6,
     this.groupsSpace = 28,
     this.barColor,
     this.leftTitleFormatter,
     this.onBarTap,
     this.bottomTitlesReservedSize = 48,
     this.bottomTitlesSpace = 12,
+    this.targetBarsPerGroup = 7,
+    this.spaceToBarRatio = 0.6,
+    this.minBarWidth = 6.0,
+    this.averageIncludeZeros = false,
   });
 
   /// List of week groups to render in order from left to right.
@@ -27,12 +29,6 @@ class WeeklyGroupedBarChart extends StatelessWidget {
 
   /// Horizontal grid step.
   final double gridInterval;
-
-  /// Width of each individual day bar.
-  final double groupBarWidth;
-
-  /// Space between bars inside the same group.
-  final double barsSpace;
 
   /// Space between groups.
   final double groupsSpace;
@@ -52,44 +48,74 @@ class WeeklyGroupedBarChart extends StatelessWidget {
   /// Space between the axis and the bottom title widget.
   final double bottomTitlesSpace;
 
+  /// Desired number of bars per group (will pad with value-0 bars when fewer).
+  final int targetBarsPerGroup;
+
+  /// Ratio of space width to bar width inside a group. Used to compute widths to fill the area.
+  final double spaceToBarRatio;
+
+  /// Minimum bar width to keep bars visible on small screens.
+  final double minBarWidth;
+
+  /// Whether to include zero-value padded bars when computing averages.
+  final bool averageIncludeZeros;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
     final computedMaxY = maxY ?? _computeMaxYRounded(weeks, gridInterval);
 
-    // Build groups
-    final groups = <BarChartGroupData>[];
-
-    for (var x = 0; x < weeks.length; x++) {
-      final week = weeks[x];
-      final rods = <BarChartRodData>[];
-      for (var j = 0; j < week.entries.length; j++) {
-        final entry = week.entries[j];
-        final color = entry.color ?? barColor ?? theme.colorScheme.primary;
-        rods.add(
-          BarChartRodData(
-            toY: entry.value,
-            width: groupBarWidth,
-            color: color,
-            borderRadius: BorderRadius.circular(3),
-          ),
-        );
-      }
-
-      groups.add(
-        BarChartGroupData(
-          x: x,
-          barRods: rods,
-          barsSpace: barsSpace,
-          showingTooltipIndicators: [],
-        ),
-      );
-    }
-
     // Chart + overlay painter for per-group average segments and bottom labels
     return LayoutBuilder(
       builder: (context, constraints) {
+        // Compute plot area width (roughly) to derive each group's area width
+        final plotLeftReserved = 40.0;
+        final plotWidth = constraints.maxWidth - plotLeftReserved; // approx
+        final visibleCount = weeks.length >= 2 ? 2 : weeks.length;
+        final totalGap = visibleCount > 1 ? groupsSpace : 0.0;
+        final areaWidth = visibleCount > 0 ? (plotWidth - totalGap) / visibleCount : 0.0;
+
+        // Compute dynamic bar width and space so that N bars + spaces exactly fill areaWidth
+        final n = targetBarsPerGroup.clamp(1, 7);
+        double barW = areaWidth / (n + (n - 1) * spaceToBarRatio);
+        if (barW < minBarWidth) {
+          barW = minBarWidth;
+        }
+        double spaceW = (areaWidth - n * barW) / (n - 1 > 0 ? (n - 1) : 1);
+        if (spaceW < 0) spaceW = 0;
+
+        // Build groups with padded bars to [n]
+        final groups = <BarChartGroupData>[];
+        for (var x = 0; x < weeks.length; x++) {
+          final week = weeks[x];
+          final entries = List<BarEntry>.from(week.entries);
+          while (entries.length < n) {
+            entries.add(const BarEntry(value: 0));
+          }
+          final rods = <BarChartRodData>[];
+          for (var j = 0; j < entries.length; j++) {
+            final entry = entries[j];
+            final color = entry.color ?? barColor ?? theme.colorScheme.primary;
+            rods.add(
+              BarChartRodData(
+                toY: entry.value,
+                width: barW,
+                color: color,
+                borderRadius: BorderRadius.circular(3),
+              ),
+            );
+          }
+          groups.add(
+            BarChartGroupData(
+              x: x,
+              barRods: rods,
+              barsSpace: spaceW,
+              showingTooltipIndicators: [],
+            ),
+          );
+        }
+
         final barChart = BarChart(
           BarChartData(
             minY: minY,
@@ -117,7 +143,7 @@ class WeeklyGroupedBarChart extends StatelessWidget {
                 sideTitles: SideTitles(
                   showTitles: true,
                   interval: gridInterval,
-                  reservedSize: 40,
+                  reservedSize: plotLeftReserved,
                   getTitlesWidget: (value, meta) {
                     final text =
                         leftTitleFormatter?.call(value) ?? value.toStringAsFixed(0);
@@ -184,13 +210,15 @@ class WeeklyGroupedBarChart extends StatelessWidget {
                   weeks: weeks,
                   minY: minY,
                   maxY: computedMaxY,
-                  groupBarWidth: groupBarWidth,
-                  barsSpace: barsSpace,
+                  groupBarWidth: barW,
+                  barsSpace: spaceW,
                   groupsSpace: groupsSpace,
-                  leftReserved: 40,
+                  leftReserved: plotLeftReserved,
                   bottomReserved: bottomTitlesReservedSize + bottomTitlesSpace,
                   onSurface: theme.colorScheme.onSurface,
                   primary: theme.colorScheme.primary,
+                  averageIncludeZeros: averageIncludeZeros,
+                  targetBarsPerGroup: n,
                 ),
               ),
             ),
@@ -206,17 +234,21 @@ class WeeklyGroupedBarChart extends StatelessWidget {
       for (final e in w.entries) {
         if (e.value > maxY) maxY = e.value;
       }
-      final avg = w.average ?? _computeAverage(w) ?? 0;
+      final avg = _computeAverage(w, includeZeros: true) ?? 0;
       if (avg > maxY) maxY = avg;
     }
     final remainder = maxY % step;
     return remainder == 0 ? maxY : maxY + (step - remainder);
   }
 
-  static double? _computeAverage(WeekGroup week) {
+  static double? _computeAverage(WeekGroup week, {bool includeZeros = false}) {
     if (week.entries.isEmpty) return null;
-    final sum = week.entries.fold<double>(0, (p, e) => p + e.value);
-    return sum / week.entries.length;
+    final list = includeZeros
+        ? week.entries
+        : week.entries.where((e) => e.value > 0).toList();
+    if (list.isEmpty) return 0;
+    final sum = list.fold<double>(0, (p, e) => p + e.value);
+    return sum / list.length;
   }
 }
 
@@ -231,7 +263,7 @@ class WeekGroup {
 
   final String label;
   final List<BarEntry> entries;
-  final double? average; // If null, computed from all bars
+  final double? average; // If null, computed from entries (zeros excluded by default)
   final Color? averageColor;
   final bool selected;
 }
@@ -255,6 +287,8 @@ class _OverlayPainter extends CustomPainter {
     required this.bottomReserved,
     required this.onSurface,
     required this.primary,
+    required this.averageIncludeZeros,
+    required this.targetBarsPerGroup,
   });
 
   final List<WeekGroup> weeks;
@@ -267,6 +301,8 @@ class _OverlayPainter extends CustomPainter {
   final double bottomReserved;
   final Color onSurface;
   final Color primary;
+  final bool averageIncludeZeros;
+  final int targetBarsPerGroup;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -284,7 +320,6 @@ class _OverlayPainter extends CustomPainter {
     final visibleCount = weeks.length >= 2 ? 2 : weeks.length;
     if (visibleCount == 0) return;
 
-    // Compute total available width for two areas plus the middle gap
     final totalGap = visibleCount > 1 ? groupsSpace : 0.0;
     final areaWidth = (plotWidth - totalGap) / visibleCount;
 
@@ -302,7 +337,10 @@ class _OverlayPainter extends CustomPainter {
       final areaEnd = areaStart + areaWidth;
 
       // Average segment spans the entire group area
-      final avg = week.average ?? WeeklyGroupedBarChart._computeAverage(week);
+      final avg = week.average ?? WeeklyGroupedBarChart._computeAverage(
+        week,
+        includeZeros: averageIncludeZeros,
+      );
       if (avg != null && maxY > minY) {
         final t = ((avg - minY) / (maxY - minY)).clamp(0.0, 1.0);
         final y = plotBottom - t * plotHeight;
@@ -366,7 +404,6 @@ class _OverlayPainter extends CustomPainter {
 
       const pillHPad = 12.0;
       final pillW = (tp.width + pillHPad * 2).clamp(0.0, areaWidth);
-      final pillH = 28.0;
 
       final pillLeft = areaStart + (areaWidth - pillW) / 2;
       final pillRight = pillLeft + pillW;
@@ -403,7 +440,7 @@ class _OverlayPainter extends CustomPainter {
         Rect.fromCenter(
           center: Offset((pillLeft + pillRight) / 2, labelY),
           width: pillW,
-          height: pillH,
+          height: 28.0,
         ),
         const Radius.circular(16),
       );
@@ -435,6 +472,8 @@ class _OverlayPainter extends CustomPainter {
         leftReserved != oldDelegate.leftReserved ||
         bottomReserved != oldDelegate.bottomReserved ||
         onSurface != oldDelegate.onSurface ||
-        primary != oldDelegate.primary;
+        primary != oldDelegate.primary ||
+        averageIncludeZeros != oldDelegate.averageIncludeZeros ||
+        targetBarsPerGroup != oldDelegate.targetBarsPerGroup;
   }
 }

@@ -34,12 +34,13 @@ class ChartDemoPage extends StatelessWidget {
         label: '14 - 20 ก.ค.',
         selected: false,
         entries: const [
-          BarEntry(value: 85),
-          BarEntry(value: 72),
           BarEntry(value: 50),
-          BarEntry(value: 90),
           BarEntry(value: 80),
-          BarEntry(value: 95),
+          BarEntry(value: 30),
+          BarEntry(value: 70),
+          BarEntry(value: 60),
+          BarEntry(value: 60),
+          BarEntry(value: 70),
         ],
         average: null, // compute from all bars
         averageColor: Colors.white,
@@ -48,11 +49,11 @@ class ChartDemoPage extends StatelessWidget {
         label: '21 - 27 ก.ค.',
         selected: true,
         entries: const [
-          BarEntry(value: 65),
-          BarEntry(value: 63),
-          BarEntry(value: 64),
+          BarEntry(value: 90),
+          BarEntry(value: 50),
+          BarEntry(value: 70),
         ],
-        average: 70,
+        // average: 70,
         averageColor: Colors.lightBlueAccent,
       ),
     ];
@@ -68,8 +69,6 @@ class ChartDemoPage extends StatelessWidget {
         child: WeeklyGroupedBarChart(
           weeks: weeks,
           gridInterval: 20,
-          groupBarWidth: 14,
-          barsSpace: 8,
           groupsSpace: 28,
           barColor: Colors.blueAccent,
           leftTitleFormatter: (v) => v.toStringAsFixed(0),
