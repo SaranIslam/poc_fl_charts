@@ -18,6 +18,7 @@ class WeeklyGroupedBarChart extends StatelessWidget {
     this.spaceToBarRatio = 0.6,
     this.minBarWidth = 6.0,
     this.averageIncludeZeros = false,
+    this.topChartInset = 10.0,
   });
 
   /// List of week groups to render in order from left to right.
@@ -59,6 +60,9 @@ class WeeklyGroupedBarChart extends StatelessWidget {
 
   /// Whether to include zero-value padded bars when computing averages.
   final bool averageIncludeZeros;
+
+  /// Small top inset FLChart keeps internally; used to align overlay Y precisely.
+  final double topChartInset;
 
   @override
   Widget build(BuildContext context) {
@@ -219,6 +223,7 @@ class WeeklyGroupedBarChart extends StatelessWidget {
                   primary: theme.colorScheme.primary,
                   averageIncludeZeros: averageIncludeZeros,
                   targetBarsPerGroup: n,
+                  topChartInset: topChartInset,
                 ),
               ),
             ),
@@ -289,6 +294,7 @@ class _OverlayPainter extends CustomPainter {
     required this.primary,
     required this.averageIncludeZeros,
     required this.targetBarsPerGroup,
+    required this.topChartInset,
   });
 
   final List<WeekGroup> weeks;
@@ -303,6 +309,7 @@ class _OverlayPainter extends CustomPainter {
   final Color primary;
   final bool averageIncludeZeros;
   final int targetBarsPerGroup;
+  final double topChartInset;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -343,7 +350,7 @@ class _OverlayPainter extends CustomPainter {
       );
       if (avg != null && maxY > minY) {
         final t = ((avg - minY) / (maxY - minY)).clamp(0.0, 1.0);
-        final y = plotBottom - t * plotHeight;
+        final y = (plotBottom - t * (plotHeight - topChartInset));
 
         final avgPaint = Paint()
           ..color = (week.averageColor ?? primary).withOpacity(0.95)
@@ -474,6 +481,7 @@ class _OverlayPainter extends CustomPainter {
         onSurface != oldDelegate.onSurface ||
         primary != oldDelegate.primary ||
         averageIncludeZeros != oldDelegate.averageIncludeZeros ||
-        targetBarsPerGroup != oldDelegate.targetBarsPerGroup;
+        targetBarsPerGroup != oldDelegate.targetBarsPerGroup ||
+        topChartInset != oldDelegate.topChartInset;
   }
 }
