@@ -78,7 +78,10 @@ class WeeklyGroupedBarChart extends StatelessWidget {
         final plotWidth = constraints.maxWidth - plotLeftReserved; // approx
         final visibleCount = weeks.length >= 2 ? 2 : weeks.length;
         final totalGap = visibleCount > 1 ? groupsSpace : 0.0;
-        final areaWidth = visibleCount > 0 ? (plotWidth - totalGap) / visibleCount : 0.0;
+        // Side padding equals half of groupsSpace when using spaceAround alignment
+        final edgePadding = visibleCount > 1 ? groupsSpace / 2 : groupsSpace;
+        final contentWidth = (plotWidth - edgePadding * 2).clamp(0.0, plotWidth);
+        final areaWidth = visibleCount > 0 ? (contentWidth - totalGap) / visibleCount : 0.0;
 
         // Compute dynamic bar width and space so that N bars + spaces exactly fill areaWidth
         final n = targetBarsPerGroup.clamp(1, 7);
@@ -126,7 +129,7 @@ class WeeklyGroupedBarChart extends StatelessWidget {
             maxY: computedMaxY,
             barGroups: groups,
             groupsSpace: groupsSpace,
-            alignment: BarChartAlignment.spaceBetween,
+            alignment: BarChartAlignment.spaceAround,
             gridData: FlGridData(
               drawVerticalLine: false,
               horizontalInterval: gridInterval,
@@ -323,16 +326,18 @@ class _OverlayPainter extends CustomPainter {
     final plotWidth = plotRight - plotLeft;
     final plotHeight = plotBottom - plotTop;
 
-    // Exactly two equal group areas with a gap of groupsSpace
+    // Exactly two equal group areas with a gap of groupsSpace and side padding = groupsSpace/2
     final visibleCount = weeks.length >= 2 ? 2 : weeks.length;
     if (visibleCount == 0) return;
 
     final totalGap = visibleCount > 1 ? groupsSpace : 0.0;
-    final areaWidth = (plotWidth - totalGap) / visibleCount;
+    final edgePadding = visibleCount > 1 ? groupsSpace / 2 : groupsSpace;
+    final contentWidth = (plotWidth - edgePadding * 2).clamp(0.0, plotWidth);
+    final areaWidth = (contentWidth - totalGap) / visibleCount;
 
     // Area start X positions
     final areaStarts = <double>[];
-    double acc = plotLeft;
+    double acc = plotLeft + edgePadding;
     for (var i = 0; i < visibleCount; i++) {
       areaStarts.add(acc);
       acc += areaWidth + (i == 0 && visibleCount > 1 ? groupsSpace : 0.0);
